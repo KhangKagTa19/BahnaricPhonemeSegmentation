@@ -4,7 +4,7 @@ import multiprocessing as mp
 import os
 import shutil
 import zipfile
-import textgrid 
+
 import gdown
 import librosa
 import numpy as np
@@ -14,19 +14,34 @@ from praatio.utilities import textgrid_io
 from tqdm.auto import tqdm
 from unidecode import unidecode
 import soundfile as sf
+from acoustic_features import extract_feature_means
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+if os.path.exists("bahnaric"):
+    shutil.rmtree("bahnaric")
+    
+if os.path.exists("Am vi Ba Na"):
+    shutil.rmtree("Am vi Ba Na")
+# Unzip the ZIP file
+with zipfile.ZipFile("Am vi Ba Na-20240202T004404Z-001.zip", "r") as zip_file:
+    zip_file.extractall()
+shutil.move("Am vi Ba Na", "bahnaric/dataset/raw")
 
+print(" check 1 ")
+# --------------------------------------------------------------------------- #
+# Parse TextGrid
+# Read the TextGrid file, keep the interval that text != ""
+# and get the label from that interval, also try to store a set of possible phonemes in labels
 data = []
+
 sr=16000
-def process_textgrid_and_audio(textgrid_file, wav_file):
+def process_textgrid_and_audio(textgrid_file):
     """
     Extracts text from a TextGrid file and cuts a corresponding audio segment from a WAV file.
-
     Args:
         textgrid_file (str): Path to the TextGrid file.
         wav_file (str): Path to the WAV file.
-
     Returns:
         None (prints results to console).
     """
@@ -35,17 +50,15 @@ def process_textgrid_and_audio(textgrid_file, wav_file):
         labels = []
         # Open TextGrid file using Parselmouth
         textgrid_data = parselmouth.Data.read(textgrid_file)
-        print(textgrid_data)
         textgrid_data.save_as_text_file("textgrid.txt")
         text = open("textgrid.txt", "r", encoding="utf-16").read()
-        print("Encode: ", text)
-        
-
+    
         textgrid_data = textgrid_io.parseTextgridStr(
             text,
             includeEmptyIntervals=False,
         )
-        print(textgrid_data)
+        
+
         entries = []
         for tier in textgrid_data["tiers"]:
             for entry in tier["entries"]:
@@ -63,7 +76,7 @@ def process_textgrid_and_audio(textgrid_file, wav_file):
                         
                     }
                 )
-        print(labels)
+       
         # Get the first 'start' value
         first_start = float(labels[0]['start'])
 
@@ -98,22 +111,26 @@ def process_textgrid_and_audio(textgrid_file, wav_file):
         if padded_segment.shape[0] > y.shape[0]:
             padded_segment = padded_segment[:y.shape[0]]  # Truncate if overflow occurs
 
-
-        sf.write(labels[0]['file_name'].replace('.TextGrid', '_cut.wav'), padded_segment, sr)
+        
+        sf.write(
+            labels[0]['file_name'].replace('.TextGrid', '_cut.wav'), padded_segment, sr
+            )
         data.append(
             {
                 "file_name": textgrid_file,
                 "start": first_start,
                 "end": last_end,
                 "phoneme": phoneme_string,
-                "speech": labels[0]['file_name'].replace('.TextGrid', '_cut.wav'),
+                
             }
         )
 
     except Exception as e:
         labels = []
+        
+        textgrid_data = parselmouth.Data.read(textgrid_file)
+        textgrid_data.save_as_text_file("textgrid.txt")
         text = open("textgrid.txt", "r", encoding="ISO-8859-1").read()
-        print("Encode: ", text)
         text = unidecode(text, "utf-8")
         text = text.replace("\x00", "")
 
@@ -121,7 +138,7 @@ def process_textgrid_and_audio(textgrid_file, wav_file):
             text,
             includeEmptyIntervals=False,
         )
-        print(textgrid_data)
+       
         entries = []
         for tier in textgrid_data["tiers"]:
             for entry in tier["entries"]:
@@ -139,7 +156,7 @@ def process_textgrid_and_audio(textgrid_file, wav_file):
                         
                     }
                 )
-        print(labels)
+       
         # Get the first 'start' value
         first_start = float(labels[0]['start'])
 
@@ -174,27 +191,96 @@ def process_textgrid_and_audio(textgrid_file, wav_file):
         if padded_segment.shape[0] > y.shape[0]:
             padded_segment = padded_segment[:y.shape[0]]  # Truncate if overflow occurs
 
-
-        sf.write(labels[0]['file_name'].replace('.TextGrid', '_cut.wav'), padded_segment, sr)
+        
+        sf.write(
+            
+            labels[0]['file_name'].replace('.TextGrid', '_cut.wav'), padded_segment, sr
+            )
         data.append(
             {
                 "file_name": textgrid_file,
                 "start": first_start,
                 "end": last_end,
                 "phoneme": phoneme_string,
-                "speech": labels[0]['file_name'].replace('.TextGrid', '_cut.wav'),
             }
         )
 
-# Replace with your actual file paths
-textgrid_file = ["chup.TextGrid","bu.TextGrid","apach.TextGrid","Ba.TextGrid"]
-for x in textgrid_file:
-    process_textgrid_and_audio(x, x.replace('.TextGrid', '.wav'))
+print(" check 2 ") 
 
-print(data)
+def _par_features_generator(file_name: str):
+    signal, sr = librosa.load(file_name, sr=16000)
+
+    feature_dfs = []
+    for k in range(5):
+        # Define window size
+        k = 75 + (1 + k) * 10
+        assert k % 2 == 1, "k must be odd"
+
+        # Break audio into frames
+        frame_length = int(sr * 0.005)  # 5ms
+        hop_length = int(sr * 0.001)  # 1ms
+        frames = librosa.util.frame(
+            signal, frame_length=frame_length, hop_length=hop_length
+        )
+
+        # Pad frames at the beginning and end
+        padding = (k - 1) // 2
+        padded_frames = np.pad(frames, ((0, 0), (padding, padding)), mode="edge")
+
+        # Calculate features on sliding window of k frames
+        features = []
+        for i in range(padding, len(padded_frames[0]) - padding):
+            window = padded_frames[:, i - padding : i + padding + 1]
+            feature = extract_feature_means(signal=window.flatten(), sr=sr)
+            features.append(feature)
+
+        features = pd.concat(features, axis=0)
+        features.columns = [f"{col}_w{str(k).zfill(3)}" for col in features.columns]
+        feature_dfs.append(features)
+
+    features = pd.concat(feature_dfs, axis=1)
+    features.to_parquet(
+        os.path.join(
+            "bahnaric/features",
+            file_name.split('\\')[-1].replace("wav", "parquet"),
+        )
+    )
+
+
+if not os.path.exists("bahnaric/features"):
+    # Create the folder
+    os.makedirs("bahnaric/features")
+folder_path = "bahnaric/dataset/raw"
+file_extension = ".TextGrid"
+
+# Traverse the directory
+for root, dirs, files in os.walk(folder_path):
+    for file in files:
+        # Check if the file ends with ".TextGrid"
+        if file.endswith(file_extension):
+            # If so, print the absolute path of the file
+            file_path = os.path.join(root, file)
+            process_textgrid_and_audio(file_path)
+
 data = pd.DataFrame(data)
 data.to_csv("preprocess.csv", index=False, encoding="utf-8")
+print("here!!!")
+
+folder_path = "bahnaric/dataset/raw"
+file_extension = "_cut.wav"
+
+# Traverse the directory
+for root, dirs, files in os.walk(folder_path):
+    for file in files:
+        # Check if the file ends with ".TextGrid"
+        if file.endswith(file_extension):
+            # If so, print the absolute path of the file
+            
+            file_path = os.path.join(root, file)
+            _par_features_generator(file_path)
+
+print("end")
 
 
-labels = pd.read_csv("preprocess.csv")
-print(labels)
+
+
