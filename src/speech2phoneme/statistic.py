@@ -18,15 +18,16 @@ from acoustic_features import extract_feature_means
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-if os.path.exists("bahnaric"):
-    shutil.rmtree("bahnaric")
-    
-if os.path.exists("Am vi Ba Na"):
-    shutil.rmtree("Am vi Ba Na")
-# Unzip the ZIP file
-with zipfile.ZipFile("Am vi Ba Na-20240202T004404Z-001.zip", "r") as zip_file:
-    zip_file.extractall()
-shutil.move("Am vi Ba Na", "bahnaric/dataset/raw")
+if not os.path.exists("bahnaric"):
+    # shutil.rmtree("bahnaric")
+    if os.path.exists("Am vi Ba Na"):
+        shutil.rmtree("Am vi Ba Na")
+    # Unzip the ZIP file
+    with zipfile.ZipFile("Am vi Ba Na-20240202T004404Z-001.zip", "r") as zip_file:
+        zip_file.extractall()
+    shutil.move("Am vi Ba Na", "bahnaric/dataset/raw")
+else: 
+    pass
 
 print(" check 1 ")
 # --------------------------------------------------------------------------- #
@@ -48,6 +49,7 @@ def process_textgrid_and_audio(textgrid_file):
 
     try:
         labels = []
+        count = 0
         # Open TextGrid file using Parselmouth
         textgrid_data = parselmouth.Data.read(textgrid_file)
         textgrid_data.save_as_text_file("textgrid.txt")
@@ -63,7 +65,7 @@ def process_textgrid_and_audio(textgrid_file):
         for tier in textgrid_data["tiers"]:
             for entry in tier["entries"]:
                 entries.append(entry)
-        print("preprocessing..." )
+        
 
         if len(entries) > 0:
             for i in range(0, len(entries)):
@@ -73,6 +75,7 @@ def process_textgrid_and_audio(textgrid_file):
                         "start": entries[i].start,
                         "end": entries[i].end,
                         "phoneme": entries[i].label,
+                        
                         
                     }
                 )
@@ -85,7 +88,8 @@ def process_textgrid_and_audio(textgrid_file):
 
         # Concatenate 'phoneme' into a single string
         phoneme_string = ''.join(item['phoneme'] for item in labels)
-
+        for item in labels:
+            count +=1
         # Load the audio file
         audio_file = labels[0]['file_name'].replace('.TextGrid', '.wav')
        
@@ -121,13 +125,13 @@ def process_textgrid_and_audio(textgrid_file):
                 "start": first_start,
                 "end": last_end,
                 "phoneme": phoneme_string,
-                
+                "number_phoneme": count,
             }
         )
 
     except Exception as e:
         labels = []
-        
+        count = 0
         textgrid_data = parselmouth.Data.read(textgrid_file)
         textgrid_data.save_as_text_file("textgrid.txt")
         text = open("textgrid.txt", "r", encoding="ISO-8859-1").read()
@@ -143,13 +147,13 @@ def process_textgrid_and_audio(textgrid_file):
         for tier in textgrid_data["tiers"]:
             for entry in tier["entries"]:
                 entries.append(entry)
-        print("preprocessing..." )
+        
 
         if len(entries) > 0:
             for i in range(0, len(entries)):
                 labels.append(
                     {
-                        "file_name": str(textgrid_file),
+                        "file_name":textgrid_file,
                         "start": entries[i].start,
                         "end": entries[i].end,
                         "phoneme": entries[i].label,
@@ -165,7 +169,8 @@ def process_textgrid_and_audio(textgrid_file):
 
         # Concatenate 'phoneme' into a single string
         phoneme_string = ''.join(item['phoneme'] for item in labels)
-
+        for item in labels:
+            count +=1
         # Load the audio file
         audio_file = labels[0]['file_name'].replace('.TextGrid', '.wav')
        
@@ -198,53 +203,16 @@ def process_textgrid_and_audio(textgrid_file):
             )
         data.append(
             {
-                "file_name": str(textgrid_file),
+                "file_name": textgrid_file,
                 "start": first_start,
                 "end": last_end,
                 "phoneme": phoneme_string,
+                "number_phoneme": count,
             }
         )
 
 print(" check 2 ") 
 
-def _par_features_generator(file_name: str):
-    signal, sr = librosa.load(file_name, sr=16000)
-
-    feature_dfs = []
-    for k in range(5):
-        # Define window size
-        k = 75 + (1 + k) * 10
-        assert k % 2 == 1, "k must be odd"
-
-        # Break audio into frames
-        frame_length = int(sr * 0.005)  # 5ms
-        hop_length = int(sr * 0.001)  # 1ms
-        frames = librosa.util.frame(
-            signal, frame_length=frame_length, hop_length=hop_length
-        )
-
-        # Pad frames at the beginning and end
-        padding = (k - 1) // 2
-        padded_frames = np.pad(frames, ((0, 0), (padding, padding)), mode="edge")
-
-        # Calculate features on sliding window of k frames
-        features = []
-        for i in range(padding, len(padded_frames[0]) - padding):
-            window = padded_frames[:, i - padding : i + padding + 1]
-            feature = extract_feature_means(signal=window.flatten(), sr=sr)
-            features.append(feature)
-
-        features = pd.concat(features, axis=0)
-        features.columns = [f"{col}_w{str(k).zfill(3)}" for col in features.columns]
-        feature_dfs.append(features)
-
-    features = pd.concat(feature_dfs, axis=1)
-    features.to_parquet(
-        os.path.join(
-            "bahnaric/features",
-            file_name.split('\\')[-1].replace("wav", "parquet"),
-        )
-    )
 
 
 if not os.path.exists("bahnaric/features"):
@@ -266,21 +234,41 @@ data = pd.DataFrame(data)
 data.to_csv("preprocess.csv", index=False, encoding="utf-8")
 print("here!!!")
 
-folder_path = "bahnaric/dataset/raw"
-file_extension = "_cut.wav"
-
-# Traverse the directory
-for root, dirs, files in os.walk(folder_path):
-    for file in files:
-        # Check if the file ends with ".TextGrid"
-        if file.endswith(file_extension):
-            # If so, print the absolute path of the file
-            
-            file_path = os.path.join(root, file)
-            _par_features_generator(file_path)
-
-print("end")
 
 
+
+
+import pandas as pd
+
+# Read the CSV file
+df = pd.read_csv("preprocess.csv")
+
+# Define the minimum and maximum values based on the data (assuming consecutive integers)
+min_value = min(df['number_phoneme'])
+max_value = max(df['number_phoneme'])
+
+# Create a dictionary to store counts for each value
+value_counts = {}
+for value in range(min_value, max_value + 1):
+    value_counts[value] = (df['number_phoneme'] == value).sum()
+
+# Print the value counts
+print("Statistic of number_phoneme values: \n")
+print(value_counts)
+
+# Read the data from the CSV file
+data = pd.read_csv("preprocess.csv")
+
+# Filter rows where number_phoneme is equal to 3
+filtered_data = data[data["number_phoneme"] == 3]
+
+# Create a sub table with the filtered data
+sub_table = filtered_data[["file_name", "start", "end", "phoneme", "number_phoneme"]]
+
+# Save the sub table to a new CSV file
+sub_table.to_csv("three_phoneme.csv", index=False)
+
+# Print confirmation message
+print("Sub table with three phonemes saved to three_phoneme.csv")
 
 
