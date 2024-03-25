@@ -3,62 +3,58 @@ import csv
 import librosa
 import soundfile as sf
 
-# Define dictionaries
-first_phoneme_dict = {'y': 1, 'ch': 1, 'k': 4, 'h': 4, 'm': 3, 'c': 3, 'l': 9, 'j': 2, 'd': 3, 'r': 3, 'p': 2, 'g': 2, 'đ': 5, 'tr': 1, 's': 1, 't': 3, 'nh': 2, 'b': 3, '‰': 1, 'n': 1, 'ng': 1}
-second_phoneme_dict = {'a': 6, 'r': 1, 'ơ': 1, 'ư': 2, 'ă': 10, 'ứ': 1, 'u': 8, 'uô': 1, 'ia': 1, 'e': 1, 'o': 5, 'ê': 2, 'i': 4, 'uə': 1, 'U': 3, 'ô': 1, 'ĭ': 2, 'ɛ': 1, 'ự': 1, 'â': 2}
-third_phoneme_dict = {'h': 9, 'a': 1, 'l': 8, 'ch': 3, 'q': 2, 'p': 4, 'ng': 6, 'i': 3, 'n': 2, 't': 3, 'k': 3, 'm': 7, 'o': 1, 'c': 1, 'r': 2}
+# Define the set of phoneme characters
+phoneme_characters = {'t', 'Kl', 'n', 'ĭ', 'oh', 'âm', 'ih', 'uch', 'ô', 'tr', 'd', 'ŭq', 'r', 'ol', 'ơ', 'U', 'nh', 'a', 'o', 'uə', 'm', "'b", 'c', 's', 'i', 'đ', 'ɤm', 'ia', 'e', 'ng', 'ɉ', 'p', 'ă', 'ŭ', 'ê', 'ɛ', 'j', 'y', 'h', 'v', 'up', 'au', 'l', 'q', 'â', 'u', 'ĕr', 'ư', 'ɯə', 'ĭ', 'uô', 'ch', 'k', 'b', 'g', 'Gr'}
 
-# Create folders
-for folder_name, phoneme_dict in [("phoneme1", first_phoneme_dict), ("phoneme2", second_phoneme_dict), ("phoneme3", third_phoneme_dict)]:
-    os.makedirs(folder_name, exist_ok=True)
+# Specify the directory where you want to create the folders
+base_directory = "./phoneme_folders"
+
+# Create folders for each phoneme character
+for phoneme in phoneme_characters:
+    # Handle case for 'u' and 'U'
+    if phoneme == 'u':
+        folder_name = os.path.join(base_directory, phoneme)
+    elif phoneme == 'U':
+        folder_name = os.path.join(base_directory, "upper_u")
+    else:
+        folder_name = os.path.join(base_directory, phoneme)
     
-    # Create subfolders based on phonemes
-    for phoneme in phoneme_dict.keys():
-        subfolder_path = os.path.join(folder_name, phoneme)
-        os.makedirs(subfolder_path, exist_ok=True)
+    os.makedirs(folder_name, exist_ok=True)
+    print(f"Created folder: {folder_name}")
 
-# Define the path to the CSV file
-csv_file = "3_phoneme_features.csv"
+csv_file = "database.csv"
 
 # Function to process each line
 def process_line(row, row_idx):
     # Extract information from the row
     filename = row['file_name'].replace('\\\\', '\\')
     start = float(row['start'])
-    phoneme1_length = float(row['phoneme_1_length'])
-    phoneme2_length = float(row['phoneme_2_length'])
-    phoneme3_length = float(row['phoneme_3_length'])
-    full_phoneme = row['full_phoneme']
-    phonemes = [row['phoneme_1'],row['phoneme_2'],row['phoneme_3']]
-    print(len(phonemes))
+
+    phoneme_lengths = [float(row[f'phoneme_{i}_length']) if row[f'phoneme_{i}_length'] else 0.0 for i in range(1, 7)]
+    phonemes = [row[f'phoneme_{i}'] for i in range(1, 7)]
 
     # Change .TextGrid to .wav in filename
     audio_filename = str(filename).replace('.TextGrid', '.wav')
     print(audio_filename)
     # Load the audio file
     audio, sr = librosa.load(audio_filename, sr=None)
-    
     # Convert start and lengths to sample indices
     start_idx = int(start * sr)
-    end_idx1 = start_idx + int(phoneme1_length * sr)
-    end_idx2 = end_idx1 + int(phoneme2_length * sr)
-    end_idx3 = end_idx2 + int(phoneme3_length * sr)
-
-    # Cut the audio into three parts based on phoneme lengths
-    part1 = audio[start_idx:end_idx1]
-    part2 = audio[end_idx1:end_idx2]
-    part3 = audio[end_idx2:end_idx3]
+    end_indices = [start_idx + int(length * sr) for length in phoneme_lengths]
 
     # Save each part to the corresponding subfolder
-    for idx, part in enumerate([part1, part2, part3], start=1):
-        if idx <= len(phonemes):  # Check if idx is within the bounds of phonemes list
-            phoneme = phonemes[idx-1]
-            folder_name = f"phoneme{idx}"
-            subfolder_path = os.path.join(folder_name, phoneme)
-            os.makedirs(subfolder_path, exist_ok=True)
-            sf.write(os.path.join(subfolder_path, f"{row_idx}_of_phoneme_{phoneme}.wav"), part, sr)
+    for idx, (phoneme, length, end_idx) in enumerate(zip(phonemes, phoneme_lengths, end_indices), start=1):
+        if phoneme == "":
+            continue
+        if phoneme == "U":
+            subfolder_path = os.path.join(base_directory, "upper_u")
         else:
-            print(f"Error: Phoneme index {idx} is out of range.")
+            subfolder_path = os.path.join(base_directory, phoneme)
+        os.makedirs(subfolder_path, exist_ok=True)
+        part = audio[start_idx:end_idx]
+        sf.write(os.path.join(subfolder_path, f"{row_idx}_of_phoneme_{phoneme}.wav"), part, sr)
+        print(phoneme)
+        start_idx = end_idx
 
 # Read the CSV file and process each line
 i = 1
@@ -66,4 +62,4 @@ with open(csv_file, mode="r", encoding="utf-8", newline='') as csvfile:
     reader = csv.DictReader(csvfile)
     for row in reader:
         process_line(row, i)
-        i+=1
+        i += 1

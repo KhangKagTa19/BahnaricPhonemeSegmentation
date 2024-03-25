@@ -271,4 +271,15 @@ sub_table.to_csv("three_phoneme.csv", index=False)
 # Print confirmation message
 print("Sub table with three phonemes saved to three_phoneme.csv")
 
+import csv
+# Function to print phoneme and number of phonemes
+def print_phoneme_info(filename):
+    with open(filename, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            phoneme = row['phoneme']
+            num_phoneme = row['number_phoneme']
+            print(f"{phoneme} : {num_phoneme}")
 
+# Call the function with the file name
+print_phoneme_info('preprocess.csv')

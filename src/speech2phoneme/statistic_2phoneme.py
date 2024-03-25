@@ -96,13 +96,13 @@ def process_textgrid_and_audio(textgrid_file):
                 "start": labels[0]['start'],
                 "phoneme_1_length": labels[0]['length'],
                 "phoneme_2_length": labels[1]['length'],
-                "phoneme_3_length": labels[2]['length'],
+                
                 "%_length_phoneme_1": labels[0]['percent_length'],
                 "%_length_phoneme_2": labels[1]['percent_length'],
-                "%_length_phoneme_3": labels[2]['percent_length'],
+                
                 "phoneme_1": labels[0]['phoneme'],
                 "phoneme_2": labels[1]['phoneme'],
-                "phoneme_3": labels[2]['phoneme'],
+               
                 "full_phoneme": phoneme_string
             }
 
@@ -113,8 +113,15 @@ def process_textgrid_and_audio(textgrid_file):
 
 
 # Load filenames from three_phoneme.csv
-filenames = pd.read_csv("three_phoneme.csv")['file_name']
 
+# Load the CSV file into a DataFrame
+df = pd.read_csv("preprocess.csv")
+
+# Filter the DataFrame where number_phoneme equals 2
+filtered_df = df[df['number_phoneme'] == 2]
+
+# Get the filenames where number_phoneme equals 2
+filenames = filtered_df['file_name'].tolist()
 # Initialize lists to store data
 data = []
 
@@ -129,69 +136,13 @@ for filename in filenames:
 df = pd.DataFrame(data)
 
 # Save DataFrame to CSV
-df.to_csv("3_phoneme_features.csv", index=False)
+df.to_csv("2_phoneme_features.csv", index=False)
 
-print("phoneme features saved to 3_phoneme_features.csv.")
+print("phoneme features saved to 2_phoneme_features.csv.")
 
 
 import csv
 from collections import Counter
-
-# Initialize a counter for phoneme_1
-phoneme_1_counter = Counter()
-
-# Read the CSV-like data
-with open('3_phoneme_features.csv', mode="r", encoding="utf-8",newline='') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        # Update counter with phoneme_1 values
-        phoneme_1_counter[row['phoneme_1']] += 1
-
-# Convert Counter object to dictionary
-phoneme_1_dict = dict(phoneme_1_counter)
-
-# Print the dictionary
-print('FIRST PHONEME')
-print(phoneme_1_dict)
-
-
-
-# Initialize a counter for phoneme_1
-phoneme_2_counter = Counter()
-
-# Read the CSV-like data
-with open('3_phoneme_features.csv',mode="r", encoding="utf-8", newline='') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        # Update counter with phoneme_1 values
-        phoneme_2_counter[row['phoneme_2']] += 1
-
-# Convert Counter object to dictionary
-phoneme_2_dict = dict(phoneme_2_counter)
-
-# Print the dictionary
-print('SECOND PHONEME')
-print(phoneme_2_dict)
-
-
-
-# Initialize a counter for phoneme_1
-phoneme_3_counter = Counter()
-
-# Read the CSV-like data
-with open('3_phoneme_features.csv',mode="r", encoding="utf-8", newline='') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        # Update counter with phoneme_1 values
-        phoneme_3_counter[row['phoneme_3']] += 1
-
-# Convert Counter object to dictionary
-phoneme_3_dict = dict(phoneme_3_counter)
-
-# Print the dictionary
-print('THIRD PHONEME')
-print(phoneme_3_dict)
-
 
 
 # Initialize a dictionary for the hierarchical tree
@@ -203,7 +154,7 @@ with open('3_phoneme_features.csv',mode="r", encoding="utf-8", newline='') as cs
     for row in reader:
         phoneme_1 = row['phoneme_1']
         phoneme_2 = row['phoneme_2']
-        phoneme_3 = row['phoneme_3']
+       
         
         # Add phoneme 1 to the hierarchy tree if not already present
         if phoneme_1 not in hierarchy_tree:
@@ -213,10 +164,7 @@ with open('3_phoneme_features.csv',mode="r", encoding="utf-8", newline='') as cs
         if phoneme_2 not in hierarchy_tree[phoneme_1]:
             hierarchy_tree[phoneme_1][phoneme_2] = []
         
-        # Add phoneme 3 to the hierarchy tree if not already present
-        if phoneme_3 not in hierarchy_tree[phoneme_1][phoneme_2]:
-            hierarchy_tree[phoneme_1][phoneme_2].append(phoneme_3)
-
+       
 # Function to recursively print the hierarchy tree as a dictionary
 def print_hierarchy_dict(tree, indent=0):
     result = ''
