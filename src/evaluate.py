@@ -8,7 +8,7 @@ from sklearn.metrics import auc, roc_auc_score, roc_curve
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Load predictions
-pred = pd.read_csv("predictions.csv")
+pred = pd.read_csv("xgb_predictions.csv")
 
 # --------------------------------------------------------------------------- #
 threshold = 0.6

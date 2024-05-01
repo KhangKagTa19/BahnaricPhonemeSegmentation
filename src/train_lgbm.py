@@ -134,10 +134,12 @@ params = {
 }
 
 model = lgb.train(params, lgb_train, num_boost_round=1000, valid_sets=lgb_val)
-
+model.save_model('op.txt')
 # --------------------------------------------------------------------------- #
 # Inference
+model = lgb.Booster(model_file='op.txt')
 pred_proba = model.predict(X_val, num_iteration=model.best_iteration)
+
 pred = pd.concat(
     [
         testing_set[
@@ -147,10 +149,14 @@ pred = pd.concat(
     ],
     axis=1,
 )
+
 pred.to_csv("predictions.csv", index=False)
 
 
+
 print("start")
+
+
 file_name = "grưa.wav"
 signal, sr = librosa.load(file_name, sr=16000)
 feature_dfs = []
@@ -180,12 +186,119 @@ for k in range(5):
         features = pd.concat(features, axis=0)
         features.columns = [f"{col}_w{str(k).zfill(3)}" for col in features.columns]
         feature_dfs.append(features)
+
+
+
 test_features = pd.concat(feature_dfs, axis=1)
 print(test_features)
 print("start predict")
+
 pred_proba = model.predict(test_features, num_iteration=model.best_iteration)
 
 df = pd.DataFrame(pred_proba)
 
 # Save DataFrame to CSV
-df.to_csv('output.csv', index=False)
+df.to_csv('op.csv', index=True)
+
+
+# --------------------------------------------------------------------------- #
+# Training
+
+label = "ov"
+neighbor_frames = 15
+training_set = gen_dataset(train, label, neighbor_frames)
+testing_set = gen_dataset(test, label, neighbor_frames)
+
+X_train = training_set.drop(
+    ["label", "ground_truth", "frame_index", "file_name"], axis=1
+)
+y_train = training_set["label"]
+print(X_train.shape, y_train.shape)
+
+X_val = testing_set.drop(
+    ["label", "ground_truth", "frame_index", "file_name"], axis=1
+)
+y_val = testing_set["label"]
+print(X_val.shape, y_val.shape)
+
+lgb_train = lgb.Dataset(X_train, y_train)
+lgb_val = lgb.Dataset(X_val, y_val, reference=lgb_train)
+
+params = {
+    "boosting_type": "gbdt",
+    "objective": "binary",
+    "metric": "auc",
+    "num_leaves": 30,
+    "learning_rate": 0.01,
+    "feature_fraction": 0.9,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 10,
+    "verbose": 0,
+    "num_threads": os.cpu_count(),
+}
+
+model = lgb.train(params, lgb_train, num_boost_round=1000, valid_sets=lgb_val)
+model.save_model('ov.txt')
+# --------------------------------------------------------------------------- #
+# Inference
+model = lgb.Booster(model_file='ov.txt')
+pred_proba = model.predict(X_val, num_iteration=model.best_iteration)
+
+pred = pd.concat(
+    [
+        testing_set[
+            ["label", "ground_truth", "frame_index", "file_name"]
+        ].reset_index(drop=True),
+        pd.DataFrame(pred_proba, columns=["proba"]),
+    ],
+    axis=1,
+)
+
+pred.to_csv("predictions.csv", index=False)
+
+
+
+print("start")
+
+file_name = "grưa.wav"
+signal, sr = librosa.load(file_name, sr=16000)
+feature_dfs = []
+for k in range(5):
+        # Define window size
+        k = 75 + (1 + k) * 10
+        assert k % 2 == 1, "k must be odd"
+
+        # Break audio into frames
+        frame_length = int(sr * 0.005)  # 5ms
+        hop_length = int(sr * 0.001)  # 1ms
+        frames = librosa.util.frame(
+            signal, frame_length=frame_length, hop_length=hop_length
+        )
+
+        # Pad frames at the beginning and end
+        padding = (k - 1) // 2
+        padded_frames = np.pad(frames, ((0, 0), (padding, padding)), mode="edge")
+
+        # Calculate features on sliding window of k frames
+        features = []
+        for i in range(padding, len(padded_frames[0]) - padding):
+            window = padded_frames[:, i - padding : i + padding + 1]
+            feature = extract_feature_means(signal=window.flatten(), sr=sr)
+            features.append(feature)
+
+        features = pd.concat(features, axis=0)
+        features.columns = [f"{col}_w{str(k).zfill(3)}" for col in features.columns]
+        feature_dfs.append(features)
+
+
+
+test_features = pd.concat(feature_dfs, axis=1)
+print(test_features)
+print("start predict")
+
+pred_proba = model.predict(test_features, num_iteration=model.best_iteration)
+
+df = pd.DataFrame(pred_proba)
+
+# Save DataFrame to CSV
+df.to_csv('ov.csv', index=True)
